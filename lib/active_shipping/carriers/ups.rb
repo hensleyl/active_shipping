@@ -211,6 +211,22 @@ module ActiveShipping
       35
     end
 
+    def find_all_tracking_numbers(shipment_number, options={})
+      options = @options.update(options)
+      access_request = build_access_request
+      shipment_request = build_find_tracking_request(shipment_number, options)
+      response = commit(:track, save_request(access_request + shipment_request), (options[:test] || false))
+      parse_shipment_response(response, options)
+    end
+
+    def find_all_tracking_info(shipment_number, options={})
+      options = @options.update(options)
+      tracking_info = []
+      find_all_tracking_numbers(shipment_number, options).each do |tracking_number|
+        tracking_info << find_tracking_info(tracking_number, options)
+      end
+    end
+
     protected
 
     def upsified_location(location)
@@ -572,6 +588,20 @@ module ActiveShipping
       xml_builder.to_xml
     end
 
+    def build_find_tracking_request(shipment_number, options={})
+      xml_builder = Nokogiri::XML::Builder.new do |xml|
+        xml.TrackRequest do
+          xml.TrackingOption(options[:tracking_option]) if options[:tracking_option]
+          xml.Request do
+            xml.RequestAction('Track')
+            xml.RequestOption('1')
+          end
+          xml.ShipmentIdentificationNumber(shipment_number.to_s)
+        end
+      end
+      xml_builder.to_xml
+    end
+
     def build_location_node(xml, name, location, options = {})
       # not implemented:  * Shipment/Shipper/Name element
       #                   * Shipment/(ShipTo|ShipFrom)/CompanyName element
@@ -860,6 +890,20 @@ module ActiveShipping
         true
       else
         raise ResponseError.new("Void shipment failed with message: #{message}")
+      end
+    end
+
+    def parse_shipment_response(response, options={})
+      xml = build_document(response, 'TrackResponse')
+      success = response_success?(xml)
+      message = response_message(xml)
+
+      if success
+        tracking_numbers = []
+        xml.css('Shipment > Package > TrackingNumber').each do |package|
+          tracking_numbers << package.text
+        end
+        tracking_numbers
       end
     end
 

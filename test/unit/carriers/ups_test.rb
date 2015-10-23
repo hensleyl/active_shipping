@@ -574,4 +574,12 @@ class UPSTest < Minitest::Test
     assert_equal 'OZS', request.search('/Package/PackageWeight/UnitOfMeasurement/Code').text
     assert_equal '8.0', request.search('/Package/PackageWeight/Weight').text
   end
+
+  def test_get_all_tracking_numbers
+    mock_response = xml_fixture('ups/test_get_all_tracking_numbers_response')
+    @carrier.expects(:commit).returns(mock_response)
+    response = @carrier.find_all_tracking_numbers('1Z7301510374144406')
+    assert_equal 14, response.count
+    assert_equal '1Z7301510374144406', response.first
+  end
 end
