@@ -94,6 +94,9 @@ module ActiveShipping
       'express_reference' => 'EXPRESS_REFERENCE',
       'express_mps_master' => 'EXPRESS_MPS_MASTER',
       'shipper_reference' => 'SHIPPER_REFERENCE',
+      'purchase_order' => 'PURCHASE_ORDER',
+      'invoice' => 'INVOICE',
+      'customer_reference' => 'CUSTOMER_REFERENCE'
     }
 
     TRANSIT_TIMES = %w(UNKNOWN ONE_DAY TWO_DAYS THREE_DAYS FOUR_DAYS FIVE_DAYS SIX_DAYS SEVEN_DAYS EIGHT_DAYS NINE_DAYS TEN_DAYS ELEVEN_DAYS TWELVE_DAYS THIRTEEN_DAYS FOURTEEN_DAYS FIFTEEN_DAYS SIXTEEN_DAYS SEVENTEEN_DAYS EIGHTEEN_DAYS)
@@ -161,6 +164,13 @@ module ActiveShipping
       parse_tracking_response(xml, options)
     end
 
+    def find_all_tracking_numbers(customer_reference, postal_code, country_code)
+      options = @options.update(package_identifier_type: 'customer_reference', destination: {postal_code: postal_code, country_code: country_code})
+
+      tracking_request = build_tracking_request(customer_reference, options)
+      xml = commit(save_request(tracking_request), (options[:test] || false))
+      parse_multiple_tracking_response(xml, options)
+    end
 
     # Get Shipping labels
     def create_shipment(origin, destination, packages, options = {})
@@ -415,6 +425,13 @@ module ActiveShipping
             xml.ShipDateRangeBegin(options[:ship_date_range_begin])         if options[:ship_date_range_begin]
             xml.ShipDateRangeEnd(options[:ship_date_range_end])             if options[:ship_date_range_end]
             xml.TrackingNumberUniqueIdentifier(options[:unique_identifier]) if options[:unique_identifier]
+
+            if options[:destination]
+              xml.Destination do
+                xml.PostalCode(options[:destination][:postal_code]) if options[:destination][:postal_code]
+                xml.CountryCode(options[:destination][:country_code]) if options[:destination][:country_code]
+              end
+            end
           end
 
           xml.ProcessingOptions('INCLUDE_DETAILED_SCANS')
@@ -648,6 +665,23 @@ module ActiveShipping
                            :destination => destination,
                            :tracking_number => tracking_number
       )
+    end
+
+    def parse_multiple_tracking_response(response, options)
+      xml = build_document(response, 'TrackReply')
+
+      success = response_success?(xml)
+      message = response_message(xml)
+
+      result = []
+      if success
+        xml.root.xpath('CompletedTrackDetails/TrackDetails').each do |track_details|
+          result << {tracking_number: track_details.at('TrackingNumber').text,
+                     weight: track_details.at('PackageWeight > Value').text.to_f}
+        end
+      end
+
+      result
     end
 
     def ship_timestamp(delay_in_hours)
