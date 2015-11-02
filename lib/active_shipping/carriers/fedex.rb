@@ -676,8 +676,18 @@ module ActiveShipping
       result = []
       if success
         xml.root.xpath('CompletedTrackDetails/TrackDetails').each do |track_details|
-          result << {tracking_number: track_details.at('TrackingNumber').text,
-                     weight: track_details.at('PackageWeight > Value').text.to_f}
+          first_notification = tracking_details.at('Notification')
+          if first_notification.at('Severity').text == 'ERROR'
+            case first_notification.at('Code').text
+            when '6225'
+              raise ActiveShipping::ShipmentNotFound, first_notification.at('Message').text
+            else
+              raise ActiveShipping::ResponseContentError, StandardError.new(first_notification.at('Message').text)
+            end
+          else
+            result << {tracking_number: track_details.at('TrackingNumber').text,
+                      weight: track_details.at('PackageWeight > Value').text.to_f}
+          end
         end
       end
 
